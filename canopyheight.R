@@ -2,7 +2,7 @@
 # https://www.youtube.com/watch?v=4ScYWPMzy6E
 # 0. Preparations
 source("utils.R")
- load_libs(c(
+load_libs(c(
   "tidyverse",
   "sf",
   "geodata",
@@ -13,24 +13,41 @@ source("utils.R")
 
 
 # 1. Download data
-urls <- c(
-  "https://libdrive.ethz.ch/index.php/s/cO8or7iOe5dT2Rt/download?path=%2F3deg_cogs&files=ETH_GlobalCanopyHeight_10m_2020_N51E006_Map.tif"
-)
+urls <- c("https://libdrive.ethz.ch/index.php/s/cO8or7iOe5dT2Rt/download?path=%2F3deg_cogs&files=ETH_GlobalCanopyHeight_10m_2020_N51E006_Map.tif")
 
-# Provide a proper filename
+# Provide a proper filename (keeps original name)
 dest_files <- c("ETH_GlobalCanopyHeight_10m_2020_N51E006_Map.tif")
 
-for (i in seq_along(urls)) {
-  if 
-  download.file(urls[i], destfile = dest_files[i], mode = "wb")
+# Where to store downloaded rasters
+data_dir <- "data"
+if (!dir.exists(data_dir)) dir.create(data_dir)
+
+# Set to TRUE to force re-download even if file exists
+force_download <- FALSE
+
+# Make full paths for destinations
+full_dest_files <- file.path(data_dir, dest_files)
+
+# Safety: check lengths
+if (length(urls) != length(full_dest_files)) {
+  stop("Length of 'urls' and 'dest_files' must match.")
 }
 
+for (i in seq_along(urls)) {
+  dest_path <- full_dest_files[i]
+  if (!file.exists(dest_path) || isTRUE(force_download)) {
+    message("Downloading: ", dest_files[i])
+    download.file(urls[i], destfile = dest_path, mode = "wb", quiet = FALSE)
+  } else {
+    message("Already present, skipping download: ", dest_path)
+  }
+}
 
-raster_files <- list.files(
-  path = getwd(),
-  pattern ="ETH",
-  full.names = T
-  )
+# Use only the raster files we just ensured exist
+raster_files <- full_dest_files[file.exists(full_dest_files)]
+if (length(raster_files) == 0) {
+  stop("No raster files found in ", data_dir)
+}
 
 # 2. Download Boundaries
 
