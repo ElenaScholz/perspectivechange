@@ -1,30 +1,16 @@
 # Mapping 3D Forest map
 # https://www.youtube.com/watch?v=4ScYWPMzy6E
 # 0. Preparations
-libs <- c(
+source("utils.R")
+ load_libs(c(
   "tidyverse",
   "sf",
   "geodata",
   "terra",
   "classInt",
   "rayshader"
-)
-
-installed_libs <-  libs %in% rownames(
-  installed.packages()
-)
-
-if(any(installed_libs == F)){
-  install.packages(
-    libs[!installed_libs]
-  )
-}
-
-invisible(lapply(
-  libs, 
-  library,
-  character.only = T
 ))
+
 
 # 1. Download data
 urls <- c(
@@ -35,6 +21,7 @@ urls <- c(
 dest_files <- c("ETH_GlobalCanopyHeight_10m_2020_N51E006_Map.tif")
 
 for (i in seq_along(urls)) {
+  if 
   download.file(urls[i], destfile = dest_files[i], mode = "wb")
 }
 
@@ -47,17 +34,7 @@ raster_files <- list.files(
 
 # 2. Download Boundaries
 
-get_country_borders <- function(country_ISO, level){
-  main_path <- getwd()
-  country_borders <- geodata::gadm(
-    country = country_ISO,
-    level = level,
-    path = main_path
-  ) |>
-  sf::st_as_sf()
-  
-  return (country_borders)
-}
+
 
 country_borders <- get_country_borders("DEU", 3) 
 
@@ -69,7 +46,8 @@ nrw <- country_borders %>%
 ruhrgebiet <- nrw %>% 
   dplyr::filter(
     NAME_2 %in% c(
-      "Bochum", "Bottrop", "Dortmund", "Duisburg", "Essen", "Gelsenkirchen", "Hagen", "Hamm", 
+      "Bochum"
+      , "Bottrop", "Dortmund", "Duisburg", "Essen", "Gelsenkirchen", "Hagen", "Hamm", 
       "Herne", "Mülheim an der Ruhr", "Oberhausen", "Recklinghausen", "Unna", "Wesel",  "Ennepe-Ruhr-Kreis" 
     )
   ) %>% 
@@ -156,6 +134,11 @@ p <- ggplot(
       fill = height
     )
   )+ 
+  geom_sf(data = ruhrgebiet, 
+          fill = NA,
+          color = "black",
+          linewidth = 0.5,
+          inherit.aes = F)
   scale_fill_gradientn(
     name = "height (m)",
     colors = texture,
@@ -229,30 +212,55 @@ p <- ggplot(
 h <- nrow(forest_height_ruhrgebiet)
 w <- ncol(forest_height_ruhrgebiet)
 
+# 
+# rayshader::plot_gg(
+#   ggobj = p,
+#   width = w/1000, # in inches
+#   height = h/1000,
+#   scale = 150, # height of spikes
+#   solid = F,
+#   soliddepth = 0,
+#   shadow = T,
+#   shadow_intensity = 0.95,  # from 0 (strong) to 1 (weak)
+#   offset_edges = F,
+#   sunangle = 315, # degrees 0-360
+#  # window.size = c(800,800),
+#   zoom = 0.8,  # zoom out = 1, zoom in = 0
+#   phi = 35,
+#   theta = -15,#-180-180
+#   multicore = T
+# )
+
+p_no_legend <- p + theme(legend.position = "none")
+
 
 rayshader::plot_gg(
   ggobj = p,
-  width = w/1000, # in inches
-  height = h/1000,
-  scale = 150, # height of spikes
+  width = w/500,
+  height = h/500,
+  scale = 40,
   solid = F,
   soliddepth = 0,
   shadow = T,
-  shadow_intensity = 0.95,  # from 0 (strong) to 1 (weak)
+  shadow_intensity = 0.95,
   offset_edges = F,
-  sunangle = 315, # degrees 0-360
- # window.size = c(800,800),
-  zoom = 0.8,  # zoom out = 1, zoom in = 0
-  phi = 35,
-  theta = -15,#-180-180
+  sunangle = 315,
+  zoom = 0.95,  # Adjusted zoom for top view
+  phi = 65,     # Nearly top-down (85-89 works well)
+  theta = 0,    # Facing north
   multicore = T
+)
+#9. Render object
+# After plot_gg(), just take a snapshot
+rayshader::render_snapshot(
+  filename = "ruhrgebiet-forest-height-2020_quick.png",
+  width = 4000,
+  height = 4000
 )
 
 
-# 9. Render object
-
 rayshader::render_highquality(
-  filename = "ruhrgebiet-forest-height-2020.png",
+  filename = "ruhrgebiet-forest-height-2020_scale40.png",
   preview = T,
   interactive = F,
   light = T,
@@ -269,7 +277,7 @@ rayshader::render_highquality(
     rayrender::microfacet(
       roughness = .6
     ),
-  width = 4000,
-  height = 4000
+  width = 2000,
+  height = 2000
 )
 
