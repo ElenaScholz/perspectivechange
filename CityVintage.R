@@ -4,7 +4,7 @@ rm(list = ls())
 # ------------------------------------------------------------
 # CONFIG
 # ------------------------------------------------------------
-area <- "ruhrgebiet"   # "bochum" oder "ruhrgebiet"
+area <- "bochum"   # "bochum" oder "ruhrgebiet"
 
 # ------------------------------------------------------------
 # Libraries
@@ -48,7 +48,7 @@ if (area == "bochum") {
 }
 
 bbox <- st_bbox(sel)
-bbx <- c(bbox["xmin"], bbox["ymin"], bbox["xmax"], bbox["ymax"])
+bbox <- c(bbox["xmin"], bbox["ymin"], bbox["xmax"], bbox["ymax"])
 
 
 # ------------------------------------------------------------
@@ -59,15 +59,15 @@ split_bbox <- function(bbox) {
   ym <- (bbox["ymin"] + bbox["ymax"]) / 2
   
   list(
-    c(bbox["xmin"], bbox["ymin"], xm,          ym),
-    c(xm,          bbox["ymin"], bbox["xmax"], ym),
-    c(bbox["xmin"], ym,           xm,          bbox["ymax"]),
-    c(xm,          ym,           bbox["xmax"], bbox["ymax"])
-  )
+      c(bbox["xmin"], bbox["ymin"], xm,          ym),
+      c(xm,          bbox["ymin"], bbox["xmax"], ym),
+      c(bbox["xmin"], ym,           xm,          bbox["ymax"]),
+      c(xm,          ym,           bbox["xmax"], bbox["ymax"])
+    )
 }
 
 if (area == "bochum") {
-  tiles <- list(bbx)  # kein Split
+  tiles <- list(bbox)  # kein Split
 } else {
   tiles <- split_bbox(bbox)  # Ruhrgebiet → split
 }
@@ -88,7 +88,7 @@ highways <- get_osm_cached(
           t,
           "highway",
           c(
-            "motorway", "trunk", "primary", "secondary"#,
+            "motorway", "trunk", "primary", "secondary",
             "tertiary", "motorway_link", "trunk_link"
           )
         )
@@ -167,7 +167,7 @@ bochum_p <- ggplot() +
   geom_sf(data = water$osm_lines, col = color_water, size = 0.8, alpha = 0.7) +
   geom_sf(data = streets$osm_lines, col = color_roads, size = 0.4, alpha = 0.65) +
   geom_sf(data = highways$osm_lines, col = color_roads, size = 0.6, alpha = 0.8) +
-  coord_sf(xlim = c(bbx[1], bbx[3]), ylim = c(bbx[2], bbx[4]), expand = FALSE) +
+  coord_sf(xlim = c(bbox[1], bbox[3]), ylim = c(bbox[2], bbox[4]), expand = FALSE) +
   theme_void() +
   theme(panel.background = element_rect(
     fill = adjustcolor(rgb(0.92,0.679,0.105), alpha.f = 0.5),
