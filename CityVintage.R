@@ -1,6 +1,6 @@
 # 
 # #https://estebanmoro.org/post/2020-10-19-personal-art-map-with-r/
-
+rm(list = ls())
 # ------------------------------------------------------------
 # CONFIG
 # ------------------------------------------------------------
@@ -76,90 +76,6 @@ if (area == "bochum") {
 # ------------------------------------------------------------
 # FUNCTION: SAFE OSM DOWNLOAD
 # ------------------------------------------------------------
-safe_osm <- function(bbox, key, value) {
-  opq(bbox = bbox) %>%
-    add_osm_feature(key = key, value = value) %>%
-    osmdata_sf()
-}
-
-# Combine results from multiple tiles
-combine_osm <- function(list_of_osm) {
-  Reduce(osmdata::c.osmdata_sf, list_of_osm)
-}
-
-
-# ------------------------------------------------------------
-# DOWNLOAD OR LOAD CACHED DATA
-# ------------------------------------------------------------
-# ------------------------------------------------------------
-# MERGE FUNCTION (statt c.osmdata_sf)
-# ------------------------------------------------------------
-
-
-get_osm_cached <- function(filename, query_fun) {
-  if (file.exists(filename)) {
-    message("Loading from cache: ", filename)
-    readRDS(filename)
-  } else {
-    message("Downloading: ", filename)
-    data <- query_fun()
-    saveRDS(data, filename)
-    data
-  }
-}
-merge_osm <- function(osm_list) {
-  
-  # wenn nur ein Tile, direkt zurückgeben
-  if (length(osm_list) == 1) return(osm_list[[1]])
-  
-  merged <- osm_list[[1]]
-  
-  # helper für einzelne sf-Objekte
-  merge_sf <- function(a, b) {
-    if (!is.null(a) && !is.null(b)) {
-      return(dplyr::bind_rows(a, b))
-    }
-    if (!is.null(a)) return(a)
-    if (!is.null(b)) return(b)
-    return(NULL)
-  }
-  
-  # Tiles nacheinander hinzufügen
-  for (i in 2:length(osm_list)) {
-    current <- osm_list[[i]]
-    
-    merged$osm_points        <- merge_sf(merged$osm_points,        current$osm_points)
-    merged$osm_lines         <- merge_sf(merged$osm_lines,         current$osm_lines)
-    merged$osm_polygons      <- merge_sf(merged$osm_polygons,      current$osm_polygons)
-    merged$osm_multilines    <- merge_sf(merged$osm_multilines,    current$osm_multilines)
-    merged$osm_multipolygons <- merge_sf(merged$osm_multipolygons, current$osm_multipolygons)
-  }
-  
-  return(merged)
-}
-
-# Wrapper wie vorher c.osmdata_sf()
-combine_osm <- function(list_of_osm) {
-  merge_osm(list_of_osm)
-}
-
-
-# ------------------------------------------------------------
-# CACHING FUNKTION
-# ------------------------------------------------------------
-get_osm_cached <- function(filename, query_fun) {
-  if (file.exists(filename)) {
-    message("Loading from cache: ", filename)
-    readRDS(filename)
-  } else {
-    message("Downloading: ", filename)
-    data <- query_fun()
-    saveRDS(data, filename)
-    data
-  }
-}
-
-
 # ------------------------------------------------------------
 # HIGHWAYS BEISPIEL (GENAU DEIN CODE)
 # ------------------------------------------------------------
@@ -173,7 +89,7 @@ highways <- get_osm_cached(
           "highway",
           c(
             "motorway", "trunk", "primary", "secondary"#,
-            #"tertiary", "motorway_link", "trunk_link"
+            "tertiary", "motorway_link", "trunk_link"
           )
         )
       )
@@ -189,8 +105,8 @@ streets <- get_osm_cached(
       lapply(tiles, function(t)
         safe_osm(t, "highway",
                  c("residential", "living_street"
-                   #,
-                  # "service", "unclassified", "pedestrian"
+                   ,
+                   "service", "unclassified", "pedestrian"
                    ))
       )
     )
