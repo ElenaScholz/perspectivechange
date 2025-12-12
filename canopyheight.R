@@ -1,5 +1,7 @@
-# Mapping 3D Forest map
-# https://www.youtube.com/watch?v=4ScYWPMzy6E
+# # Mapping 3D Forest map
+# # https://www.youtube.com/watch?v=4ScYWPMzy6E
+rm(list = ls())
+
 # 0. Preparations
 source("utils.R")
 load_libs(c(
@@ -52,28 +54,27 @@ if (length(raster_files) == 0) {
 # 2. Download Boundaries
 
 
+country_borders <- get_country_borders("DEU", 3)
 
-country_borders <- get_country_borders("DEU", 3) 
-
-nrw <- country_borders %>% 
+nrw <- country_borders %>%
   dplyr::filter(
     NAME_1 == "Nordrhein-Westfalen"
   )
 
-ruhrgebiet <- nrw %>% 
+ruhrgebiet <- nrw %>%
   dplyr::filter(
     NAME_2 %in% c(
       "Bochum"
-      , "Bottrop", "Dortmund", "Duisburg", "Essen", "Gelsenkirchen", "Hagen", "Hamm", 
-      "Herne", "Mülheim an der Ruhr", "Oberhausen", "Recklinghausen", "Unna", "Wesel",  "Ennepe-Ruhr-Kreis" 
+      # , "Bottrop", "Dortmund", "Duisburg", "Essen", "Gelsenkirchen", "Hagen", "Hamm",
+      # "Herne", "Mülheim an der Ruhr", "Oberhausen", "Recklinghausen", "Unna", "Wesel",  "Ennepe-Ruhr-Kreis"
     )
-  ) %>% 
+  ) %>%
   sf::st_union()
 
 # 3. Load Forest Height
 # - load in the files
 # - crop the files
-# - mosaic 
+# - mosaic
 
 forest_height_list <- lapply(
   raster_files,
@@ -103,15 +104,15 @@ if (length(forest_height_rasters) > 1) {
 
 # Decrease the resolution by aggregation
 
-forest_height_ruhrgebiet <- forest_height_mosaic %>% 
+forest_height_ruhrgebiet <- forest_height_mosaic %>%
   terra::aggregate(
-    fact = 5 # might be to low
+    fact = 10 # might be to low
   )
 
 
 # 4. Raster to Df
 
-forest_height_ruhrgebiet_df <- forest_height_ruhrgebiet %>% 
+forest_height_ruhrgebiet_df <- forest_height_ruhrgebiet %>%
   as.data.frame(xy = T)
 names(forest_height_ruhrgebiet_df)[3] <- "height"
 
@@ -144,24 +145,24 @@ texture <- colorRampPalette(
 p <- ggplot(
   forest_height_ruhrgebiet_df
 )+
-  geom_raster(
+  geom_tile(
     aes(
       x = x,
       y = y,
       fill = height
     )
-  )+ 
-  geom_sf(data = ruhrgebiet, 
+  )+
+  geom_sf(data = ruhrgebiet,
           fill = NA,
           color = "black",
           linewidth = 0.5,
-          inherit.aes = F)
+          inherit.aes = F)+
   scale_fill_gradientn(
     name = "height (m)",
     colors = texture,
     breaks = round(breaks, 0)
-  ) + 
-  coord_sf( crs = 4326) + 
+  ) +
+  coord_sf( crs = 4326) +
   guides(
     fill = guide_colorbar(  # CHANGED FROM guide_legend
       direction = "vertical",
@@ -203,14 +204,14 @@ p <- ggplot(
     panel.grid.major = element_line(
       color = "white"
     ),
-    
+
     panel.grid.minor = element_line(
       color = "white"
     ),
     plot.background = element_rect(
       fill = "white", color = NA
     ),
-    
+
     legend.background = element_rect(
       fill = "white", color = NA
     ),
@@ -229,30 +230,30 @@ p <- ggplot(
 h <- nrow(forest_height_ruhrgebiet)
 w <- ncol(forest_height_ruhrgebiet)
 
-# 
-# rayshader::plot_gg(
-#   ggobj = p,
-#   width = w/1000, # in inches
-#   height = h/1000,
-#   scale = 150, # height of spikes
-#   solid = F,
-#   soliddepth = 0,
-#   shadow = T,
-#   shadow_intensity = 0.95,  # from 0 (strong) to 1 (weak)
-#   offset_edges = F,
-#   sunangle = 315, # degrees 0-360
-#  # window.size = c(800,800),
-#   zoom = 0.8,  # zoom out = 1, zoom in = 0
-#   phi = 35,
-#   theta = -15,#-180-180
-#   multicore = T
-# )
+
+rayshader::plot_gg(
+  ggobj = p,
+  width = w/1000, # in inches
+  height = h/1000,
+  scale = 150, # height of spikes
+  solid = F,
+  soliddepth = 0,
+  shadow = T,
+  shadow_intensity = 0.95,  # from 0 (strong) to 1 (weak)
+  offset_edges = F,
+  sunangle = 315, # degrees 0-360
+ # window.size = c(800,800),
+  zoom = 0.8,  # zoom out = 1, zoom in = 0
+  phi = 35,
+  theta = -15,#-180-180
+  multicore = T
+)
 
 p_no_legend <- p + theme(legend.position = "none")
 
 
 rayshader::plot_gg(
-  ggobj = p,
+  ggobj = p_no_legend,
   width = w/500,
   height = h/500,
   scale = 40,
@@ -290,7 +291,7 @@ rayshader::render_highquality(
   lightaltitude = c(
     15, 15, 80, 80
   ),
-  ground_material = 
+  ground_material =
     rayrender::microfacet(
       roughness = .6
     ),

@@ -1,0 +1,494 @@
+---
+title: "Forest Height Map with City Structures"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output: html_notebook
+---
+
+# Forest Height and Urban Structure Map for Ruhrgebiet
+
+This notebook combines forest height data with OpenStreetMap urban infrastructure 
+to create a comprehensive visualization of the region.
+
+## Setup
+
+```{r setup, message=FALSE, warning=FALSE}
+# Load utility functions
+source("utils.R")
+
+# Load required libraries
+load_libs(c(
+  "tidyverse",
+  "sf",
+  "geodata",
+  "terra",
+  "classInt",
+  "osmdata",
+  "purrr",
+  "rayshader"
+))
+
+# Set stable Overpass server
+set_overpass_url("https://overpass.kumi.systems/api/interpreter")
+```
+
+## Configuration
+
+```{r config}
+area <- "bochum"  # Options: "bochum" or "ruhrgebiet"
+data_dir <- "data"
+if (!dir.exists(data_dir)) dir.create(data_dir)
+```
+
+## 1. Download and Prepare Administrative Boundaries
+
+```{r boundaries}
+# Get country borders
+country_borders <- get_country_borders("DEU", 3)
+
+# Filter for North Rhine-Westphalia
+nrw <- country_borders %>%
+  filter(NAME_1 == "Nordrhein-Westfalen")
+
+# Define Ruhrgebiet region
+ruhrgebiet <- nrw %>%
+  filter(
+    NAME_2 %in% c(
+      "Bochum", "Bottrop", "Dortmund", "Duisburg", "Essen", "Gelsenkirchen",
+      "Hagen", "Hamm", "Herne", "Mülheim an der Ruhr", "Oberhausen",
+      "Recklinghausen", "Unna", "Wesel", "Ennepe-Ruhr-Kreis"
+    )
+  )
+
+# Filter for Bochum
+bochum <- nrw %>% filter(NAME_2 == "Bochum")
+
+# Select area based on configuration
+if (area == "bochum") {
+  sel <- bochum
+} else if (area == "ruhrgebiet") {
+  sel <- ruhrgebiet
+} else {
+  stop("area must be 'bochum' or 'ruhrgebiet'")
+}
+
+# Create bounding box
+bbox <- st_bbox(sel)
+bbox <- c(bbox["xmin"], bbox["ymin"], bbox["xmax"], bbox["ymax"])
+
+cat("Selected area:", area, "\n")
+cat("Bounding box:", bbox, "\n")
+```
+
+## 2. Download Forest Height Data
+
+```{r forest-download}
+# Forest height data URL
+urls <- c("https://libdrive.ethz.ch/index.php/s/cO8or7iOe5dT2Rt/download?path=%2F3deg_cogs&files=ETH_GlobalCanopyHeight_10m_2020_N51E006_Map.tif")
+
+dest_files <- c("ETH_GlobalCanopyHeight_10m_2020_N51E006_Map.tif")
+full_dest_files <- file.path(data_dir, dest_files)
+force_download <- FALSE
+
+# Download files if needed
+for (i in seq_along(urls)) {
+  dest_path <- full_dest_files[i]
+  if (!file.exists(dest_path) || isTRUE(force_download)) {
+    message("Downloading: ", dest_files[i])
+    download.file(urls[i], destfile = dest_path, mode = "wb", quiet = FALSE)
+  } else {
+    message("Already present, skipping download: ", dest_path)
+  }
+}
+
+raster_files <- full_dest_files[file.exists(full_dest_files)]
+if (length(raster_files) == 0) {
+  stop("No raster files found in ", data_dir)
+}
+```
+
+## 3. Process Forest Height Data
+
+```{r forest-processing}
+# Union geometry for cropping
+region_union <- sel %>% st_union()
+
+# Load and crop raster files
+forest_height_list <- lapply(raster_files, terra::rast)
+
+forest_height_rasters <- lapply(
+  forest_height_list,
+  function(x) {
+    terra::crop(
+      x,
+      terra::vect(region_union),
+      snap = "in",
+      mask = TRUE
+    )
+  }
+)
+
+# Mosaic if multiple rasters
+if (length(forest_height_rasters) > 1) {
+  forest_height_mosaic <- do.call(terra::mosaic, forest_height_rasters)
+} else {
+  forest_height_mosaic <- forest_height_rasters[[1]]
+}
+
+# Aggregate to reduce resolution (faster processing)
+forest_height_region <- forest_height_mosaic %>%
+  terra::aggregate(fact = 10)
+
+# Convert to dataframe for ggplot
+forest_height_df <- forest_height_region %>%
+  as.data.frame(xy = TRUE)
+names(forest_height_df)[3] <- "height"
+
+cat("Forest height data processed\n")
+cat("Dimensions:", nrow(forest_height_df), "pixels\n")
+```
+
+## 4. Prepare Bounding Box Tiles (for large areas)
+
+```{r bbox-tiles}
+split_bbox <- function(bbox) {
+  xm <- (bbox["xmin"] + bbox["xmax"]) / 2
+  ym <- (bbox["ymin"] + bbox["ymax"]) / 2
+  
+  list(
+    c(bbox["xmin"], bbox["ymin"], xm, ym),
+    c(xm, bbox["ymin"], bbox["xmax"], ym),
+    c(bbox["xmin"], ym, xm, bbox["ymax"]),
+    c(xm, ym, bbox["xmax"], bbox["ymax"])
+  )
+}
+
+if (area == "bochum") {
+  tiles <- list(bbox)  # No split needed
+} else {
+  tiles <- split_bbox(bbox)  # Split for larger area
+}
+```
+
+## 5. Download OSM Infrastructure Data
+
+```{r osm-download, message=FALSE, warning=FALSE}
+# Highways (major roads)
+highways <- get_osm_cached(
+  paste0("data/highways_", area, ".rds"),
+  function() {
+    combine_osm(
+      lapply(tiles, function(t)
+        safe_osm(
+          t,
+          "highway",
+          c(
+            "motorway", "trunk", "primary", "secondary",
+            "tertiary", "motorway_link", "trunk_link"
+          )
+        )
+      )
+    )
+  }
+)
+
+# Streets (residential and minor roads)
+streets <- get_osm_cached(
+  paste0("data/streets_", area, ".rds"),
+  function() {
+    combine_osm(
+      lapply(tiles, function(t)
+        safe_osm(
+          t,
+          "highway",
+          c("residential", "living_street", "service", 
+            "unclassified", "pedestrian")
+        )
+      )
+    )
+  }
+)
+
+# Waterways
+water <- get_osm_cached(
+  paste0("data/water_", area, ".rds"),
+  function() {
+    combine_osm(
+      lapply(tiles, function(t)
+        safe_osm(t, "waterway", c("river", "stream", "canal"))
+      )
+    )
+  }
+)
+
+# Water bodies
+water_bodies <- get_osm_cached(
+  paste0("data/waterbodies_", area, ".rds"),
+  function() {
+    combine_osm(
+      lapply(tiles, function(t)
+        safe_osm(t, "water", c("river", "lake", "reservoir", "pond"))
+      )
+    )
+  }
+)
+
+# Water areas
+water_areas <- get_osm_cached(
+  paste0("data/waterareas_", area, ".rds"),
+  function() {
+    combine_osm(
+      lapply(tiles, function(t)
+        safe_osm(t, "natural", "water")
+      )
+    )
+  }
+)
+
+cat("OSM data downloaded successfully\n")
+```
+
+## 6. Define Color Schemes
+
+```{r colors}
+# Forest height colors
+forest_cols <- c(
+  "white", "#ffd3af", "#fbe06e",
+  "#6daa55", "#205544"
+)
+
+forest_texture <- colorRampPalette(
+  forest_cols,
+  bias = 2
+)(6)
+
+# Urban infrastructure colors
+color_roads <- rgb(0.42, 0.449, 0.488)
+color_water <- rgb(0.2, 0.4, 0.6, 0.5)
+
+# Calculate breaks for forest height
+breaks <- classInt::classIntervals(
+  forest_height_df$height,
+  n = 5,
+  style = "quantile"
+)$brks
+```
+
+## 7. Create Combined Map
+
+```{r combined-map, fig.width=12, fig.height=14}
+combined_map <- ggplot() +
+  # Forest height base layer
+  geom_tile(
+    data = forest_height_df,
+    aes(x = x, y = y, fill = height)
+  ) +
+  scale_fill_gradientn(
+    name = "Height (m)",
+    colors = forest_texture,
+    breaks = round(breaks, 0)
+  ) +
+  # Water features
+  geom_sf(
+    data = water_areas$osm_polygons,
+    fill = color_water,
+    col = color_water,
+    alpha = 0.6,
+    lwd = 0,
+    inherit.aes = FALSE
+  ) +
+  geom_sf(
+    data = water_bodies$osm_polygons,
+    fill = color_water,
+    col = color_water,
+    alpha = 0.6,
+    lwd = 0,
+    inherit.aes = FALSE
+  ) +
+  geom_sf(
+    data = water$osm_lines,
+    col = color_water,
+    linewidth = 0.8,
+    alpha = 0.7,
+    inherit.aes = FALSE
+  ) +
+  # Road network
+  geom_sf(
+    data = streets$osm_lines,
+    col = color_roads,
+    linewidth = 0.3,
+    alpha = 0.5,
+    inherit.aes = FALSE
+  ) +
+  geom_sf(
+    data = highways$osm_lines,
+    col = color_roads,
+    linewidth = 0.6,
+    alpha = 0.8,
+    inherit.aes = FALSE
+  ) +
+  # Administrative boundary
+  geom_sf(
+    data = sel,
+    fill = NA,
+    color = "black",
+    linewidth = 0.5,
+    inherit.aes = FALSE
+  ) +
+  # Coordinate system and limits
+  coord_sf(
+    xlim = c(bbox[1], bbox[3]),
+    ylim = c(bbox[2], bbox[4]),
+    expand = FALSE,
+    crs = 4326
+  ) +
+  guides(
+    fill = guide_legend(
+        direction = "vertical",
+        keyheight = unit(5, "mm"),
+        keywidth = unit(5, "mm"),
+        title.position = "top",
+        label.position = "right",
+        title.hjust = .5,
+        label.hjust = .5,
+        ncol = 1,
+        byrow = F
+    )
+) +
+  theme_minimal() +
+  theme(
+      axis.line = element_blank(),
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank(),
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),
+      legend.position = "right",
+      legend.title = element_text(
+          size = 11, color = "grey10"
+      ),
+      legend.text = element_text(
+          size = 10, color = "grey10"
+      ),
+      panel.grid.major = element_line(
+          color = "white"
+      ),
+       panel.grid.minor = element_line(
+          color = "white"
+      ),
+      plot.background = element_rect(
+          fill = "white", color = NA
+      ),
+      legend.background = element_rect(
+          fill = "white", color = NA
+      ),
+      panel.border = element_rect(
+          fill = NA, color = "white"
+      ),
+      plot.margin = unit(
+          c(
+              t = 0, r = 0,
+              b = 0, l = 0
+          ), "lines"
+      )
+  )
+  # Legend
+  # guides(
+  #   fill = guide_colorbar(
+  #     direction = "vertical",
+  #     barheight = unit(50, "mm"),
+  #     barwidth = unit(5, "mm"),
+  #     title.position = "top",
+  #     title.hjust = 0.5,
+  #     label.hjust = 0.5
+  #   )
+  # ) +
+  # # Theme
+  # theme_void() +
+  # theme(
+  #   legend.position = "right",
+  #   legend.title = element_text(size = 11, color = "grey10"),
+  #   legend.text = element_text(size = 10, color = "grey10"),
+  #   plot.background = element_rect(fill = "white", color = NA),
+  #   legend.background = element_rect(fill = "white", color = NA),
+  #   plot.margin = unit(c(0, 0, 0, 0), "lines")
+  # ) +
+  # labs(
+  #   title = paste("Forest Height and Urban Infrastructure -", 
+  #                 tools::toTitleCase(area))
+  # )
+
+print(combined_map)
+```
+
+## 8. Create a version without a legend
+
+```{r no-legend-map}
+combined_map_no_legend <- combined_map + 
+  theme(legend.position = "none")
+
+#print(combined_map_no_legend)
+```
+
+## 9. Create a 3D Version of the map
+```{r calculate width and height}
+h <- nrow(forest_height_region)
+w <- ncol(forest_height_region)
+
+rayshader::plot_gg(
+    ggobj = combined_map,
+    width = w / 1000,
+    height = h / 1000,
+    scale = 150,
+    solid = F,
+    soliddepth = 0,
+    shadow = T,
+    shadow_intensity = .99,
+    offset_edges = F,
+    sunangle = 315,
+   # window.size = c(800, 800),
+    zoom = .4,
+    phi = 30,
+    theta = -30,
+    multicore = T
+)
+
+rayshader::render_camera(
+    phi = 50,
+    zoom = .7,
+    theta = 45
+)
+
+
+
+```
+
+```{r export, eval=FALSE}
+# Export settings
+dpi <- 300
+width_inch <- 16.5
+height_inch <- 23.4
+
+# Save the map
+ggsave(
+  filename = paste0("output/forest_city_map_", area, ".png"),
+  plot = combined_map,
+  width = width_inch,
+  height = height_inch,
+  dpi = dpi,
+  bg = "white"
+)
+
+cat("Map exported successfully\n")
+```
+
+## Summary
+
+This notebook creates a comprehensive map combining:
+
+- **Forest height data** from ETH Global Canopy Height dataset (2020)
+- **Road network** from OpenStreetMap (highways and streets)
+- **Water features** (rivers, streams, lakes, water bodies)
+- **Administrative boundaries** for the selected region
+
+The visualization shows the spatial relationship between natural forest cover 
+and urban development patterns in the region.

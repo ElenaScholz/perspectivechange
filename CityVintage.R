@@ -153,6 +153,10 @@ water_areas <- get_osm_cached(
   }
 )
 
+
+################
+# Black and White Plot
+################
 color_roads <- rgb(0.42, 0.449, 0.488)
 color_water <- rgb(0.2, 0.4, 0.6, 0.5)
 
@@ -186,8 +190,9 @@ ggsave(
   type = "cairo" # bessere Kantenglättung für Linien
 )
 
-
+################################
 # Pastel color palette with depth
+################################
 color_bg <- "#F5F3F0"           # Soft cream background
 color_area <- "#E8E4E1"         # Light grey for city area
 color_water <- "#B8D4E8"        # Soft pastel blue for water
@@ -256,3 +261,26 @@ ggsave(
   units = "in",
   type = "cairo" # bessere Kantenglättung für Linien
 )
+
+library(ggplot2)
+
+bochum_p +
+  geom_sf(
+    data = highways_primary,
+    color = alpha("grey10", 0.9),
+    linewidth = 0.7,
+    lineend = "round"
+  ) +
+  geom_sf(
+    data = streets_residential,
+    color = alpha("grey20", 0.6),
+    linewidth = 0.4,
+    linetype = "solid"
+  ) +
+  theme_void() +
+  theme(
+    panel.background = element_rect(fill = NA),
+    plot.background = element_rect(fill = NA)
+  )
+
+
