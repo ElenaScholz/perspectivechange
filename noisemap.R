@@ -5,7 +5,9 @@ source("utils.R")
 renv::install("pacman")
 renv::install("remotes")
 
-area <- "bochum"
+area <- "germany" #"bochum" #"ruhrgebiet 
+area <- tolower(area)
+stopifnot(area %in% c("germany", "ruhrgebiet", "bochum"))
 
 
 # Run your integrated loading workflow
@@ -35,7 +37,7 @@ ruhrgebiet <- ger %>%
   ) %>% 
   sf::st_as_sf()
 
-bbox <- sf::st_bbox(ruhrgebiet)
+bbox <- sf::st_bbox(area)
 
 # Get Noise Image
 
