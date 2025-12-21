@@ -215,7 +215,18 @@ set_overpass_url("https://overpass.kumi.systems/api/interpreter")
 # ------------------------------------------------------------
 # GET ADMIN BOUNDARIES
 # ------------------------------------------------------------
-country_borders <- get_country_borders("DEU", 3)
+country_borders <- readRDS("data/gadm/gadm41_DEU_3_pk.rds")
+
+# Check if it's packed and unwrap if needed
+if (inherits(country_borders, "PackedSpatVector")) {
+  country_borders <- terra::unwrap(country_borders)
+}
+
+# Now convert to sf
+country_borders <- country_borders |>
+  sf::st_as_sf() |>
+  st_make_valid()
+
 
 nrw <- country_borders %>%
   filter(NAME_1 == "Nordrhein-Westfalen")
@@ -343,6 +354,12 @@ water_areas <- get_osm_cached(
   }
 )
 
+streets_clip   <- clip_to_sel(streets$osm_lines, sel)
+highways_clip  <- clip_to_sel(highways$osm_lines, sel)
+water_clip     <- clip_to_sel(water$osm_lines, sel)
+
+water_areas_clip <- clip_to_sel(water_areas$osm_polygons, sel)
+water_bodies_clip <- clip_to_sel(water_bodies$osm_polygons, sel)
 
 # ------------------------------------------------------------
 # FUNCTION: CREATE MAP WITH CUSTOMIZABLE COLORS
@@ -359,23 +376,40 @@ create_city_map <- function(
     street_size = 0.4,
     highway_size = 0.6
 ) {
-  
   p <- ggplot() +
-    geom_sf(data = sel, fill = bg_color, alpha = bg_alpha, lwd = 0) +
-    geom_sf(data = water_areas$osm_polygons, fill = water_color,
+    geom_sf(data = water_areas_clip, fill = water_color,
             col = water_color, alpha = water_alpha, lwd = 0) +
-    geom_sf(data = water_bodies$osm_polygons, fill = water_color,
+    geom_sf(data = water_bodies_clip, fill = water_color,
             col = water_color, alpha = water_alpha, lwd = 0) +
-    geom_sf(data = water$osm_lines, col = water_color, 
+    geom_sf(data = water_clip, col = water_color,
             size = water_line_size, alpha = water_alpha + 0.1) +
-    geom_sf(data = streets$osm_lines, col = road_color, 
+    geom_sf(data = streets_clip, col = road_color,
             size = street_size, alpha = road_alpha_streets) +
-    geom_sf(data = highways$osm_lines, col = road_color, 
+    geom_sf(data = highways_clip, col = road_color,
             size = highway_size, alpha = road_alpha_highways) +
-    coord_sf(xlim = c(bbox[1], bbox[3]), ylim = c(bbox[2], bbox[4]), 
-             expand = FALSE) +
+    coord_sf(
+      xlim = c(bbox[1], bbox[3]),
+      ylim = c(bbox[2], bbox[4]),
+      expand = FALSE
+    ) +
     theme_void()
-  
+  # 
+  # p <- ggplot() +
+  #   geom_sf(data = sel, fill = bg_color, alpha = bg_alpha, lwd = 0) +
+  #   geom_sf(data = water_areas$osm_polygons, fill = water_color,
+  #           col = water_color, alpha = water_alpha, lwd = 0) +
+  #   geom_sf(data = water_bodies$osm_polygons, fill = water_color,
+  #           col = water_color, alpha = water_alpha, lwd = 0) +
+  #   geom_sf(data = water$osm_lines, col = water_color, 
+  #           size = water_line_size, alpha = water_alpha + 0.1) +
+  #   geom_sf(data = streets$osm_lines, col = road_color, 
+  #           size = street_size, alpha = road_alpha_streets) +
+  #   geom_sf(data = highways$osm_lines, col = road_color, 
+  #           size = highway_size, alpha = road_alpha_highways) +
+  #   coord_sf(xlim = c(bbox[1], bbox[3]), ylim = c(bbox[2], bbox[4]), 
+  #            expand = FALSE) +
+  #   theme_void()
+  # 
   return(p)
 }
 

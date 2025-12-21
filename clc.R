@@ -1,358 +1,318 @@
 rm(list = ls())
+# 1. PACKAGES
 
-# ------------------------------------------------------------
-# Setup
-# ------------------------------------------------------------
-renv::activate()
-source("utils.R", chdir = TRUE)
+libs <- c(
+  "terra",
+  "giscoR",
+  "sf",
+  "tidyverse",
+  "ggtern",
+  "elevatr",
+  "png",
+  "rayshader",
+  "magick"
+)
 
-# Kernlibraries
-load_libs(c(
-  "sf", "geodata", "terra", "elevatr",
-  "png", "rayshader", "magick",
-  "osmdata", "ggplot2", "dplyr", "purrr"
-))
 
-# Overpass-Server setzen
-set_overpass_url("https://overpass.kumi.systems/api/interpreter")
+source("utils.R")
 
-# ------------------------------------------------------------
-# CONFIG
-# ------------------------------------------------------------
-area <- "bochum"   # "bochum" oder "ruhrgebiet"
-
-# ------------------------------------------------------------
-# GET ADMIN BOUNDARIES (GADM LEVEL 3)
-# ------------------------------------------------------------
-country_borders <- get_country_borders("DEU", 3)
-country_borders <- st_make_valid(country_borders)
-
-nrw <- country_borders %>%
-  filter(NAME_1 == "Nordrhein-Westfalen")
-
-# Ruhrgebiet
-ruhrgebiet <- nrw %>%
-  filter(
-    NAME_2 %in% c(
-      "Bochum", "Bottrop", "Dortmund", "Duisburg", "Essen", "Gelsenkirchen",
-      "Hagen", "Hamm", "Herne", "Mülheim an der Ruhr", "Oberhausen",
-      "Recklinghausen", "Unna", "Wesel", "Ennepe-Ruhr-Kreis"
-    )
+load_libs(libs)
+invisible(
+  lapply(
+    libs, library, character.only = T
   )
-
-# Bochum extrahieren
-bochum <- nrw %>% filter(NAME_2 == "Bochum")
-
-# sf → terra
-bochum_sf <- st_make_valid(bochum)
-bochum_terra <- terra::vect(bochum_sf)
-
-# ------------------------------------------------------------
-# LOAD RASTER (CLC+)
-# ------------------------------------------------------------
-clc <- terra::rast(
-  "data/clc/CLMS_CLCPLUS_RAS_S2023_R10m_E41N31_03035_V01_R00.tif"
 )
 
-# ------------------------------------------------------------
-# REPROJECT BOCHUM → CRS DES RASTERS
-# ------------------------------------------------------------
-bochum_terra <- terra::project(bochum_terra, terra::crs(clc))
+# 2. COUNTRY BORDERS
 
-# ------------------------------------------------------------
-# CROP + MASK
-# ------------------------------------------------------------
-country_clc <- terra::crop(
-  clc,
-  bochum_terra,
-  mask = TRUE,
-  snap = "in"
+country_sf <- giscoR::gisco_get_countries(
+  country = "NZ",
+  resolution = "1"
 )
 
-# ------------------------------------------------------------
-# RECLASSIFY AND SIMPLIFY CATEGORIES
-# ------------------------------------------------------------
-rcl_matrix <- matrix(c(
-  1,  1,   # Sealed -> Urban/Built-up
-  2,  2,   # Needle-leaved trees -> Coniferous forest
-  3,  3,   # Broadleaved deciduous -> Deciduous forest
-  4,  3,   # Broadleaved evergreen -> Deciduous forest (merge)
-  5,  4,   # Low-growing woody -> Shrubland
-  6,  5,   # Permanent herbaceous -> Grassland/Meadow
-  7,  6,   # Periodically herbaceous -> Agricultural land
-  8,  4,   # Lichens/mosses -> Shrubland (merge)
-  9,  7,   # Non/sparsely vegetated -> Bare ground
-  10, 8,   # Water -> Water
-  11, 7,   # Snow/ice -> Bare ground (merge)
-  253, 9,  # Coastal buffer -> No data
-  254, 9,  # Outside area -> No data
-  255, 9   # No data -> No data
-), ncol = 2, byrow = TRUE)
+plot(sf::st_geometry(country_sf))
 
-# Reclassify
-country_forest_simplified <- terra::classify(
-  country_clc,
-  rcl_matrix,
-  right = FALSE
+png("maps/nz-borders.png")
+plot(sf::st_geometry(country_sf))
+dev.off()
+
+# 3 DOWNLOAD ESRI LAND COVER TILES
+
+urls <- c(
+  "https://lulctimeseries.blob.core.windows.net/lulctimeseriesv003/lc2022/33T_20220101-20230101.tif",
+  "https://lulctimeseries.blob.core.windows.net/lulctimeseriesv003/lc2022/34T_20220101-20230101.tif"
 )
 
-# ------------------------------------------------------------
-# REPROJECT TO LAMBERT
-# ------------------------------------------------------------
-crs_lambert <- "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +datum=WGS84 +units=m +no_frfs"
-
-country_forest_simplified <- country_forest_simplified %>%
-  terra::project(crs_lambert)
-
-# ------------------------------------------------------------
-# DEFINE COLORS
-# ------------------------------------------------------------
-cols <- c(
-  "#4a4a4a",  # 1: Urban/Sealed - dark gray
-  "#0d5c3f",  # 2: Coniferous forest - deep green
-  "#52a447",  # 3: Deciduous forest - bright green
-  "#8fbc8f",  # 4: Shrubland - light olive green
-  "#c8d96f",  # 5: Grassland - yellow-green
-  "#e8c547",  # 6: Agricultural - golden yellow
-  "#d4a574",  # 7: Bare ground - tan/brown
-  "#1e90ff"   # 8: Water - bright blue
-)
-
-cat_names <- c(
-  "Urban/Built-up",
-  "Coniferous Forest", 
-  "Deciduous Forest",
-  "Shrubland",
-  "Grassland/Meadow",
-  "Agricultural Land",
-  "Bare Ground",
-  "Water"
-)
-
-# ------------------------------------------------------------
-# CREATE RGB RASTER
-# ------------------------------------------------------------
-from <- 1:8
-to <- t(col2rgb(cols))
-
-lut <- data.frame(
-  ID = from,
-  R  = to[,1],
-  G  = to[,2],
-  B  = to[,3]
-)
-
-print("Color LUT:")
-print(lut)
-
-forest_terra <- na.omit(country_forest_simplified)
-
-# Initialize RGB layers
-r_layer <- forest_terra
-g_layer <- forest_terra
-b_layer <- forest_terra
-
-# Set all to 0 first
-r_layer[] <- 0
-g_layer[] <- 0
-b_layer[] <- 0
-
-# Apply colors for each class
-for (i in 1:nrow(lut)) {
-  mask <- forest_terra == lut$ID[i]
-  r_layer[mask] <- lut$R[i]
-  g_layer[mask] <- lut$G[i]
-  b_layer[mask] <- lut$B[i]
-  
-  n_pixels <- sum(terra::values(mask), na.rm = TRUE)
-  cat(sprintf("Class %d (%s): %d pixels assigned RGB(%d,%d,%d)\n", 
-              lut$ID[i], 
-              cat_names[i],
-              n_pixels,
-              lut$R[i], lut$G[i], lut$B[i]))
+for(url in urls){
+  download.file(
+    url = url,
+    destfile = basename(url),
+    mode = "wb"
+  )
 }
 
-# Combine into RGB raster
-forest_type_rgb <- c(r_layer, g_layer, b_layer)
-names(forest_type_rgb) <- c("R","G","B")
+# 4 LOAD TILES
 
-img_file <- "data/clc/forest_type_image.png"
+raster_files <- list.files(
+  path = getwd(),
+  pattern = "20230101.tif$",
+  full.names = T
+)
+
+crs <- "EPSG:4326"
+
+for(raster in raster_files){
+  rasters <- terra::rast(raster)
+  
+  country <- country_sf |>
+    sf::st_transform(
+      crs = terra::crs(
+        rasters
+      )
+    )
+  
+  land_cover <- terra::crop(
+    rasters,
+    terra::vect(
+      country
+    ),
+    snap = "in",
+    mask = T
+  ) |>
+    terra::aggregate(
+      fact = 5,
+      fun = "modal"
+    ) |>
+    terra::project(crs)
+  
+  terra::writeRaster(
+    land_cover,
+    paste0(
+      raster,
+      "_bosnia",
+      ".tif"
+    )
+  )
+}
+
+# 5 LOAD VIRTUAL LAYER
+
+r_list <- list.files(
+  path = getwd(),
+  pattern = "_bosnia",
+  full.names = T
+)
+
+land_cover_vrt <- terra::vrt(
+  r_list,
+  "bosnia_land_cover_vrt.vrt",
+  overwrite = T
+)
+
+# 6 FETCH ORIGINAL COLORS
+
+ras <- terra::rast(
+  raster_files[[1]]
+)
+
+raster_color_table <- do.call(
+  data.frame,
+  terra::coltab(ras)
+)
+
+head(raster_color_table)
+
+hex_code <- ggtern::rgb2hex(
+  r = raster_color_table[,2],
+  g = raster_color_table[,3],
+  b = raster_color_table[,4]
+)
+
+# 7 ASSIGN COLORS TO RASTER
+
+cols <- hex_code[c(2:3, 5:6, 8:12)]
+
+from <- c(1:2, 4:5, 7:11)
+to <- t(col2rgb(cols))
+land_cover_vrt <- na.omit(land_cover_vrt)
+
+land_cover_bosnia <- terra::subst(
+  land_cover_vrt,
+  from = from,
+  to = to,
+  names = cols
+)
+
+terra::plotRGB(land_cover_bosnia)
+
+# 8 DIGITAL ELEVATION MODEL
+
+elev <- elevatr::get_elev_raster(
+  locations = country_sf,
+  z = 9, clip = "locations"
+)
+
+crs_lambert <-
+  "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +datum=WGS84 +units=m +no_frfs"
+
+land_cover_bosnia_resampled <- terra::resample(
+  x = land_cover_bosnia,
+  y = terra::rast(elev),
+  method = "near"
+) |>
+  terra::project(crs_lambert)
+
+terra::plotRGB(land_cover_bosnia_resampled)
+
+img_file <- "land_cover_bosnia.png"
+
 terra::writeRaster(
-  forest_type_rgb, 
-  img_file, 
-  overwrite = TRUE,
-  datatype = "INT1U",
+  land_cover_bosnia_resampled,
+  img_file,
+  overwrite = T,
   NAflag = 255
 )
 
-# Read back as PNG
 img <- png::readPNG(img_file)
 
-# Print color legend
-cat("\n=== COLOR LEGEND ===\n")
-for(i in 1:length(cat_names)) {
-  cat(sprintf("%d: %s - %s\n", i, cat_names[i], cols[i]))
-}
+# 9. RENDER SCENE
+#----------------
 
-# ------------------------------------------------------------
-# GET ELEVATION DATA
-# ------------------------------------------------------------
-elev <- elevatr::get_elev_raster(
-  location = bochum_sf,
-  z = 12,
-  clip = "locations"
-)
-
-elev_lambert <- elev %>%
-  terra::rast() %>%
+elev_lambert <- elev |>
+  terra::rast() |>
   terra::project(crs_lambert)
 
-elmat <- rayshader::raster_to_matrix(elev_lambert)
-
-cat("Elevation range:", range(elmat, na.rm = TRUE), "\n")
+elmat <- rayshader::raster_to_matrix(
+  elev_lambert
+)
 
 h <- nrow(elev_lambert)
 w <- ncol(elev_lambert)
 
-# ------------------------------------------------------------
-# OVERLAY FUNCTION
-# ------------------------------------------------------------
-overlay_image <- function(base_texture, overlay_img, alpha = 0.8) {
-  overlay_resized <- array(0, dim = dim(base_texture))
-  base_dims <- dim(base_texture)
-  img_dims <- dim(overlay_img)
-  
-  scale_h <- img_dims[1] / base_dims[1]
-  scale_w <- img_dims[2] / base_dims[2]
-  
-  for(i in 1:base_dims[1]) {
-    for(j in 1:base_dims[2]) {
-      img_i <- min(ceiling(i * scale_h), img_dims[1])
-      img_j <- min(ceiling(j * scale_w), img_dims[2])
-      for(k in 1:3) {
-        overlay_resized[i, j, k] <- overlay_img[img_i, img_j, k]
-      }
-    }
-  }
-  
-  blended <- base_texture * (1 - alpha) + overlay_resized * alpha
-  return(blended)
-}
-
-# ------------------------------------------------------------
-# CREATE TEXTURE WITH SHADOWS
-# ------------------------------------------------------------
-base_map <- elmat %>% 
+elmat |>
   rayshader::height_shade(
-    texture = colorRampPalette("white")(512)
-  ) %>% 
-  rayshader::add_shadow(
-    rayshader::lamb_shade(
-      elmat,
-      zscale = 45,
-      sunaltitude = 45,
-      sunangle = 315
-    ), 
-    max_darken = 0.4
-  ) %>% 
-  rayshader::add_shadow(
-    rayshader::texture_shade(
-      elmat,
-      detail = 0.8,
-      brightness = 90,
-      contrast = 80
-    ), 
-    max_darken = 0.2
-  )
-
-# ------------------------------------------------------------
-# OVERLAY FOREST TYPE IMAGE
-# ------------------------------------------------------------
-final_texture <- overlay_image(base_map, img, alpha = 0.8)
-
-# ------------------------------------------------------------
-# RENDER 3D PLOT
-# ------------------------------------------------------------
-final_texture %>% 
+    texture = colorRampPalette(
+      cols[9]
+    )(256)
+  ) |>
+  rayshader::add_overlay(
+    img,
+    alphalayer = 1
+  ) |>
   rayshader::plot_3d(
-    elmat, 
-    zscale = 20,
-    solid = FALSE,
-    shadow = TRUE,
-    shadow_darkness = 0.5,
+    elmat,
+    zscale = 12,
+    solid = F,
+    shadow = T,
+    shadow_darkness = 1,
     background = "white",
-    windowsize = c(800, 800),
-    zoom = 0.6,
-    phi = 50,
+    windowsize = c(
+      w / 5, h / 5
+    ),
+    zoom = .5,
+    phi = 85,
     theta = 0
   )
 
-# ------------------------------------------------------------
-# RENDER HIGH QUALITY IMAGE
-# ------------------------------------------------------------
-# Create maps directory if it doesn't exist
-if(!dir.exists("maps")) dir.create("maps")
-
-rayshader::render_highquality(
-  filename = "maps/bochum-clc-3d.png",
-  preview = TRUE,
-  light = FALSE,
-  interactive = FALSE,
-  parallel = TRUE,
-  width = w * 2,  # Higher resolution
-  height = h * 2
+rayshader::render_camera(
+  zoom = .58
 )
 
-# ------------------------------------------------------------
-# CREATE LEGEND
-# ------------------------------------------------------------
-png("maps/bochum_legend.png", width = 800, height = 600, bg = "transparent")
-par(family = "sans")
+# 10. RENDER OBJECT
+#-----------------
+
+u <- "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/4k/air_museum_playground_4k.hdr"
+hdri_file <- basename(u)
+
+download.file(
+  url = u,
+  destfile = hdri_file,
+  mode = "wb"
+)
+
+filename <- "3d_land_cover_bosnia-dark.png"
+
+rayshader::render_highquality(
+  filename = filename,
+  preview = T,
+  light = F,
+  environment_light = hdri_file,
+  intensity_env = 1,
+  rotate_env = 90,
+  interactive = F,
+  parallel = T,
+  width = w * 1.5,
+  height = h * 1.5
+)
+
+# 11. PUT EVERYTHING TOGETHER
+
+c(
+  "#419bdf", "#397d49", "#7a87c6", 
+  "#e49635", "#c4281b", "#a59b8f", 
+  "#a8ebff", "#616161", "#e3e2c3"
+)
+
+legend_name <- "land_cover_legend.png"
+png(legend_name)
+par(family = "mono")
+
 plot(
-  NULL, xaxt = "n",
-  yaxt = "n", bty = "n",
-  ylab = "", xlab = "",
-  xlim = 0:1, ylim = 0:1,
-  xaxs = "i", yaxs = "i"
+  NULL,
+  xaxt = "n",
+  yaxt = "n",
+  bty = "n",
+  ylab = "",
+  xlab = "",
+  xlim = 0:1,
+  ylim = 0:1,
+  xaxs = "i",
+  yaxs = "i"
 )
 legend(
   "center",
-  legend = cat_names,
-  pch = 16,
-  pt.cex = 3,
-  cex = 1.5,
+  legend = c(
+    "Water",
+    "Trees",
+    "Crops",
+    "Built area",
+    "Rangeland"
+  ),
+  pch = 15,
+  cex = 2,
+  pt.cex = 1,
   bty = "n",
-  col = cols,
-  title = "Land Cover - Bochum",
-  title.cex = 1.8
+  col = c(cols[c(1:2, 4:5, 9)]),
+  fill = c(cols[c(1:2, 4:5, 9)]),
+  border = "grey20"
 )
 dev.off()
 
-# ------------------------------------------------------------
-# COMBINE MAP AND LEGEND
-# ------------------------------------------------------------
-bochum_img <- magick::image_read("maps/bochum-clc-3d.png")
-my_legend <- magick::image_read("maps/bochum_legend.png")
+# filename <- "land-cover-bih-3d-b.png"
 
-my_legend_scaled <- magick::image_scale(
-  my_legend, 
-  "x1000"  # Scale to fit nicely
+lc_img <- magick::image_read(
+  filename
 )
 
-final_map <- magick::image_composite(
-  bochum_img,
+my_legend <- magick::image_read(
+  legend_name
+)
+
+my_legend_scaled <- magick::image_scale(
+  magick::image_background(
+    my_legend, "none"
+  ), 2500
+)
+
+p <- magick::image_composite(
+  magick::image_scale(
+    lc_img, "x7000" 
+  ),
   my_legend_scaled,
-  gravity = "northeast",  # Position in top-right
-  offset = "+50+50"       # 50px padding from edges
+  gravity = "southwest",
+  offset = "+100+0"
 )
 
 magick::image_write(
-  final_map,
-  "maps/bochum-final-map.png"
+  p, "3d_bosnia_land_cover_final.png"
 )
-
-cat("\n=== RENDERING COMPLETE ===\n")
-cat("Files created:\n")
-cat("  - maps/bochum-clc-3d.png (high quality 3D render)\n")
-cat("  - maps/bochum_legend.png (legend)\n")
-cat("  - maps/bochum-final-map.png (final map with legend)\n")

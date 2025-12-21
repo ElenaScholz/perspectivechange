@@ -142,4 +142,20 @@ get_osm_cached <- function(filename, query_fun) {
 }
 
 
+split_bbox <- function(bbox) {
+  xm <- (bbox["xmin"] + bbox["xmax"]) / 2
+  ym <- (bbox["ymin"] + bbox["ymax"]) / 2
+  
+  list(
+    c(bbox["xmin"], bbox["ymin"], xm,          ym),
+    c(xm,          bbox["ymin"], bbox["xmax"], ym),
+    c(bbox["xmin"], ym,           xm,          bbox["ymax"]),
+    c(xm,          ym,           bbox["xmax"], bbox["ymax"])
+  )
+}
+
+clip_to_sel <- function(x, sel) {
+  if (is.null(x) || nrow(x) == 0) return(x)
+  st_intersection(st_make_valid(x), st_make_valid(sel))
+}
 

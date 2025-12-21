@@ -8,3 +8,7 @@
 *.tif
 *.png
 *.zip
+.*shp
+.*dbf
+
+data/*
