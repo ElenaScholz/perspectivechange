@@ -283,8 +283,7 @@ rayshader::render_highquality(
   min_variance = min_variance,
   sample_method = "sobol",
   width = width_px,
-  height = height_px,
-  background = "white"
+  height = height_px
 )
 
 cat(sprintf("✓ HQ: %s\n", hq_file))

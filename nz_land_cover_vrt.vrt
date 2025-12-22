@@ -1,0 +1,64 @@
+<VRTDataset rasterXSize="31342" rasterYSize="46392">
+  <SRS dataAxisToSRSAxisMapping="2,1">PROJCS["NZGD2000 / New Zealand Transverse Mercator 2000",GEOGCS["NZGD2000",DATUM["New_Zealand_Geodetic_Datum_2000",SPHEROID["GRS 1980",6378137,298.257222101,AUTHORITY["EPSG","7019"]],AUTHORITY["EPSG","6167"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4167"]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",173],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",1600000],PARAMETER["false_northing",10000000],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Northing",NORTH],AXIS["Easting",EAST],AUTHORITY["EPSG","2193"]]</SRS>
+  <GeoTransform>  9.7819908440230309e+05,  5.0102456374172071e+01,  0.0000000000000000e+00,  6.4630533714892166e+06,  0.0000000000000000e+00, -5.0102456374172078e+01</GeoTransform>
+  <VRTRasterBand dataType="Float32" band="1">
+    <NoDataValue>nan</NoDataValue>
+    <ColorInterp>Gray</ColorInterp>
+    <ComplexSource>
+      <SourceFilename relativeToVRT="1">data/clc/nz/01G_20240101-20241231.tif_nz.tif</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SourceProperties RasterXSize="9115" RasterYSize="18575" DataType="Float32" BlockXSize="9115" BlockYSize="1" />
+      <SrcRect xOff="0" yOff="0" xSize="9115" ySize="18575" />
+      <DstRect xOff="22188.7680208664" yOff="18163.792572271" xSize="9152.92612700493" ySize="18652.2877464747" />
+      <NODATA>nan</NODATA>
+    </ComplexSource>
+    <ComplexSource>
+      <SourceFilename relativeToVRT="1">data/clc/nz/58F_20240101-20241231.tif_nz.tif</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SourceProperties RasterXSize="4350" RasterYSize="10723" DataType="Float32" BlockXSize="4350" BlockYSize="1" />
+      <SrcRect xOff="0" yOff="0" xSize="4350" ySize="10722.9136076081" />
+      <DstRect xOff="1727.29961806925" yOff="35669.5513622797" xSize="4349.81137412031" ySize="10722.4486377203" />
+      <NODATA>nan</NODATA>
+    </ComplexSource>
+    <ComplexSource>
+      <SourceFilename relativeToVRT="1">data/clc/nz/58G_20240101-20241231.tif_nz.tif</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SourceProperties RasterXSize="5606" RasterYSize="18150" DataType="Float32" BlockXSize="5606" BlockYSize="1" />
+      <SrcRect xOff="0" yOff="0" xSize="5606" ySize="18150" />
+      <DstRect xOff="0" yOff="17933.3182414707" xSize="5609.00509551352" ySize="18159.7293049537" />
+      <NODATA>nan</NODATA>
+    </ComplexSource>
+    <ComplexSource>
+      <SourceFilename relativeToVRT="1">data/clc/nz/59G_20240101-20241231.tif_nz.tif</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SourceProperties RasterXSize="10674" RasterYSize="18100" DataType="Float32" BlockXSize="10674" BlockYSize="1" />
+      <SrcRect xOff="0" yOff="0" xSize="10674" ySize="18100" />
+      <DstRect xOff="3888.43630081298" yOff="17703.4099348077" xSize="10655.7819463881" ySize="18069.1074788856" />
+      <NODATA>nan</NODATA>
+    </ComplexSource>
+    <ComplexSource>
+      <SourceFilename relativeToVRT="1">data/clc/nz/59H_20240101-20241231.tif_nz.tif</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SourceProperties RasterXSize="11701" RasterYSize="18061" DataType="Float32" BlockXSize="11701" BlockYSize="1" />
+      <SrcRect xOff="0" yOff="0" xSize="11701" ySize="18061" />
+      <DstRect xOff="2977.69316966472" yOff="0" xSize="11681.9945590842" ySize="18031.6642792598" />
+      <NODATA>nan</NODATA>
+    </ComplexSource>
+    <ComplexSource>
+      <SourceFilename relativeToVRT="1">data/clc/nz/60G_20240101-20241231.tif_nz.tif</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SourceProperties RasterXSize="11099" RasterYSize="18334" DataType="Float32" BlockXSize="11099" BlockYSize="1" />
+      <SrcRect xOff="0" yOff="0" xSize="11099" ySize="18334" />
+      <DstRect xOff="13255.7711878803" yOff="17703.4880440522" xSize="11089.7814566053" ySize="18318.7722520408" />
+      <NODATA>nan</NODATA>
+    </ComplexSource>
+    <ComplexSource>
+      <SourceFilename relativeToVRT="1">data/clc/nz/60H_20240101-20241231.tif_nz.tif</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SourceProperties RasterXSize="12061" RasterYSize="18284" DataType="Float32" BlockXSize="12061" BlockYSize="1" />
+      <SrcRect xOff="0" yOff="0" xSize="12061" ySize="18284" />
+      <DstRect xOff="13570" yOff="0.0450636741493862" xSize="12055.0667825209" ySize="18275.0054764624" />
+      <NODATA>nan</NODATA>
+    </ComplexSource>
+  </VRTRasterBand>
+</VRTDataset>

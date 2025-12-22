@@ -1,5 +1,5 @@
 #https://www.youtube.com/watch?v=thAB4IzplQA
-
+rm(list = ls())
 # 1. PACKAGES
 #------------
 
@@ -70,7 +70,7 @@ non_eu_sf <- countries_sf |>
 #--------------------
 
 indicator_df <- restatapi::get_eurostat_data(
-  id = "demo_r_pjanind3",
+  id = "demo_r_pjanind2",
   filters = c("MEDAGEPOP", "YR"),
   date_filter = c(2023:2024),
   exact_match = T,
@@ -78,7 +78,7 @@ indicator_df <- restatapi::get_eurostat_data(
 )
 
 # indicator_df2 <- restatapi::get_eurostat_data(
-#   id = ,
+#   id = "aei_pr_soiler",
 #   filters = ,
 #   date_filter = ,
 #   exact_match = ,
@@ -117,9 +117,9 @@ head(indicator_wide_df)
 indicator_df_final <- indicator_wide_df |>
   dplyr::mutate(
     values = dplyr::if_else(
-      is.na(`2022`),
-      `2021`,
-      `2022`
+      is.na(`2024`),
+      `2023`,
+      `2024`
     )
   ) |>
   dplyr::select(NUTS_ID, values)

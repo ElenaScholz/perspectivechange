@@ -16,6 +16,7 @@ libs <- c(
 
 source("utils.R")
 
+
 load_libs(libs)
 invisible(
   lapply(
@@ -24,38 +25,63 @@ invisible(
 )
 
 # 2. COUNTRY BORDERS
+# #https://estebanmoro.org/post/2020-10-19-personal-art-map-with-r/
+rm(list = ls())
+# ------------------------------------------------------------
+# CONFIG
+# ------------------------------------------------------------
+area <- "ruhrgebiet"   # "bochum" oder "ruhrgebiet"
 
-country_sf <- giscoR::gisco_get_countries(
-  country = "NZ",
-  resolution = "1"
-)
+# ------------------------------------------------------------
+# Libraries
+# ------------------------------------------------------------
+
+# ------------------------------------------------------------
+# GET ADMIN BOUNDARIES
+# ------------------------------------------------------------
+country_borders <- readRDS("data/gadm/gadm41_DEU_3_pk.rds")
+
+# Check if it's packed and unwrap if needed
+if (inherits(country_borders, "PackedSpatVector")) {
+  country_borders <- terra::unwrap(country_borders)
+}
+
+# Now convert to sf
+country_borders <- country_borders |>
+  sf::st_as_sf() |>
+  st_make_valid()
+
+
+nrw <- country_borders %>%
+  filter(NAME_1 == "Nordrhein-Westfalen")
+
+ruhrgebiet <- nrw %>%
+  filter(
+    NAME_2 %in% c(
+      "Bochum", "Bottrop", "Dortmund", "Duisburg", "Essen", "Gelsenkirchen",
+      "Hagen", "Hamm", "Herne", "Mülheim an der Ruhr", "Oberhausen",
+      "Recklinghausen", "Unna", "Wesel", "Ennepe-Ruhr-Kreis"
+    )
+  )
+
+bochum <- nrw %>% filter(NAME_2 == "Bochum")
+
 
 plot(sf::st_geometry(country_sf))
 
-png("maps/nz-borders.png")
+country_sf <- ruhrgebiet
+plot(sf::st_geometry(country_sf))
+
+png("maps/ruhrgebiet-borders.png")
 plot(sf::st_geometry(country_sf))
 dev.off()
 
-# 3 DOWNLOAD ESRI LAND COVER TILES
-
-urls <- c(
-  "https://lulctimeseries.blob.core.windows.net/lulctimeseriesv003/lc2022/33T_20220101-20230101.tif",
-  "https://lulctimeseries.blob.core.windows.net/lulctimeseriesv003/lc2022/34T_20220101-20230101.tif"
-)
-
-for(url in urls){
-  download.file(
-    url = url,
-    destfile = basename(url),
-    mode = "wb"
-  )
-}
 
 # 4 LOAD TILES
 
 raster_files <- list.files(
-  path = getwd(),
-  pattern = "20230101.tif$",
+  path = "C:/Users/elena/Documents/RProjects/perspectivechange/data/clc/",
+  pattern = "20241231.tif$",
   full.names = T
 )
 
@@ -89,23 +115,23 @@ for(raster in raster_files){
     land_cover,
     paste0(
       raster,
-      "_bosnia",
+      "_ger",
       ".tif"
     )
   )
 }
 
-# 5 LOAD VIRTUAL LAYER
+ # 5 LOAD VIRTUAL LAYER
 
 r_list <- list.files(
-  path = getwd(),
-  pattern = "_bosnia",
+  path = "C:/Users/elena/Documents/RProjects/perspectivechange/data/clc/",
+  pattern = "_ger",
   full.names = T
 )
 
 land_cover_vrt <- terra::vrt(
   r_list,
-  "bosnia_land_cover_vrt.vrt",
+  "ger_land_cover_vrt.vrt",
   overwrite = T
 )
 
@@ -147,10 +173,15 @@ terra::plotRGB(land_cover_bosnia)
 
 # 8 DIGITAL ELEVATION MODEL
 
+
+ruhr_wgs84 <- sf::st_transform(country_sf, 4326)
+
 elev <- elevatr::get_elev_raster(
-  locations = country_sf,
-  z = 9, clip = "locations"
+  locations = ruhr_wgs84,
+  z = 12,
+  clip = "locations"
 )
+
 
 crs_lambert <-
   "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +datum=WGS84 +units=m +no_frfs"
@@ -247,7 +278,7 @@ rayshader::render_highquality(
 
 # 11. PUT EVERYTHING TOGETHER
 
-c(
+legend <- c(
   "#419bdf", "#397d49", "#7a87c6", 
   "#e49635", "#c4281b", "#a59b8f", 
   "#a8ebff", "#616161", "#e3e2c3"
